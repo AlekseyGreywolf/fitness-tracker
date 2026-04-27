@@ -402,6 +402,18 @@
         <div class="form-row"><div class="form-label">Fat (g)</div><input type="number" id="g-fat" placeholder="65"></div>
       </div>
       <button class="btn btn-primary btn-full" onclick="saveGoals()" style="margin-top:4px;">Save goals</button>
+
+      <div class="section-label" style="margin-top:24px;">Data backup</div>
+      <div class="card">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.5;">Export a backup file any time, and restore it if you reinstall or switch devices. <strong style="color:var(--text);">Do this before updating the app.</strong></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm" style="flex:1;color:var(--green);border-color:var(--green);" onclick="exportData()">Export backup</button>
+          <label class="btn btn-sm" style="flex:1;cursor:pointer;">
+            Restore backup
+            <input type="file" accept=".json" style="display:none;" onchange="importData(this.files[0])">
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- HISTORY -->
@@ -469,6 +481,38 @@ function loadAll() {
   apiKey = ls('ht-apikey') || '';
 }
 function saveState() { lsSave('ht-'+TODAY, JSON.stringify(S)); }
+
+// Migration: pull all ht- keys from current localStorage into a backup bundle,
+// and restore from a bundle if one exists. This survives origin changes.
+function exportData() {
+  const bundle = {};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k&&k.startsWith('ht-')) bundle[k]=localStorage.getItem(k);
+  }
+  const json = JSON.stringify(bundle);
+  const blob = new Blob([json],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'health-tracker-backup-'+TODAY+'.json';
+  a.click();
+}
+
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const bundle = JSON.parse(e.target.result);
+      let count = 0;
+      Object.entries(bundle).forEach(([k,v])=>{
+        if(k.startsWith('ht-')){ lsSave(k,v); count++; }
+      });
+      alert(`Restored ${count} records successfully. Reloading...`);
+      location.reload();
+    } catch(err) { alert('Could not read backup file. Make sure it is a valid health tracker backup.'); }
+  };
+  reader.readAsText(file);
+}
 
 function goTo(p) {
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
