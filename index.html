@@ -116,7 +116,7 @@
   .search-wrap { position: relative; }
   .search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 18px; cursor: pointer; padding: 4px; }
   .search-results { border: 0.5px solid var(--border2); border-radius: var(--radius-sm); margin-top: 8px; overflow: hidden; display: none; }
-  .result-item { padding: 12px 14px; cursor: pointer; border-bottom: 0.5px solid var(--border); active: none; }
+  .result-item { padding: 12px 14px; cursor: pointer; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; }
   .result-item:last-child { border-bottom: none; }
   .result-item:active { background: var(--bg3); }
   .result-name { font-size: 14px; font-weight: 500; }
@@ -338,6 +338,9 @@
 
       <div class="section-label">Today's log</div>
       <div class="card" id="food-log"><div class="empty-state">No meals logged yet</div></div>
+
+      <div class="section-label">My saved foods</div>
+      <div class="card" id="my-foods-list"><div class="empty-state">No saved foods yet — save from search results or manual entry</div></div>
     </div>
 
     <!-- ACTIVITY -->
@@ -587,6 +590,7 @@ function renderNutrition() {
   }
 
   renderFoodLog();
+  renderMyFoods();
 }
 
 function renderFoodLog() {
@@ -642,9 +646,12 @@ Use standard USDA values. For restaurant items use typical values. Output only t
     const text=data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
     const items=JSON.parse(text);
     if(!items||!items.length) throw new Error('empty');
-    res.innerHTML=items.map(f=>`<div class="result-item" onclick='pickFood(${JSON.stringify(f).replace(/'/g,"&#39;")})'>
-      <div class="result-name">${f.name}</div>
-      <div class="result-macros">${f.cal} kcal · ${f.p}g protein · ${f.c}g carbs · ${f.f}g fat · ${f.fiber}g fiber</div>
+    res.innerHTML=items.map(f=>`<div class="result-item">
+      <div onclick='pickFood(${JSON.stringify(f).replace(/'/g,"&#39;")})' style="flex:1;cursor:pointer;">
+        <div class="result-name">${f.name}</div>
+        <div class="result-macros">${f.cal} kcal · ${f.p}g protein · ${f.c}g carbs · ${f.f}g fat · ${f.fiber}g fiber</div>
+      </div>
+      <button class="btn btn-sm" style="flex-shrink:0;margin-left:8px;color:var(--teal);border-color:var(--teal);" onclick='saveAiFood(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Save</button>
     </div>`).join('');
   } catch(e) {
     res.innerHTML='<div class="ai-loading" style="color:var(--amber);">Could not load results. Check your API key or try manual entry.</div>';
@@ -666,10 +673,48 @@ function addManual() {
   ['m-name','m-cal','m-prot','m-carb','m-fat','m-fiber'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('manual-form').style.display='none';
 }
+function saveAiFood(f) {
+  customFoods[f.name] = {name:f.name,cal:+f.cal,p:+f.p,c:+f.c,f:+f.f,fiber:+(f.fiber||0)};
+  lsSave('ht-foods',JSON.stringify(customFoods));
+  renderMyFoods();
+  // Brief visual feedback on the button
+  event.target.textContent='Saved ✓';
+  event.target.style.color='var(--green)';
+  event.target.style.borderColor='var(--green)';
+  setTimeout(()=>{ event.target.textContent='Save'; event.target.style.color='var(--teal)'; event.target.style.borderColor='var(--teal)'; },1500);
+}
+
+function renderMyFoods() {
+  const c = document.getElementById('my-foods-list');
+  if(!c) return;
+  const foods = Object.values(customFoods);
+  if(!foods.length){ c.innerHTML='<div class="empty-state">No saved foods yet — save from search results or manual entry</div>'; return; }
+  c.innerHTML = foods.map(f=>`<div class="log-item">
+    <div style="flex:1;cursor:pointer;" onclick='logSavedFood(${JSON.stringify(f).replace(/'/g,"&#39;")})'>
+      <div class="log-name">${f.name}</div>
+      <div class="log-macros">${f.cal} kcal · ${f.p}g protein · ${f.c}g carbs · ${f.f}g fat · ${f.fiber||0}g fiber</div>
+      <div style="font-size:11px;color:var(--green);margin-top:3px;">Tap to add to today</div>
+    </div>
+    <button class="delete-btn" onclick='deleteSavedFood(${JSON.stringify(f.name).replace(/'/g,"&#39;")})'>✕</button>
+  </div>`).join('');
+}
+
+function logSavedFood(f) {
+  S.meals.push({name:f.name,cal:+f.cal,p:+f.p,c:+f.c,f:+f.f,fiber:+(f.fiber||0)});
+  saveState(); renderNutrition(); renderHome();
+}
+
+function deleteSavedFood(name) {
+  delete customFoods[name];
+  lsSave('ht-foods',JSON.stringify(customFoods));
+  renderMyFoods();
+}
+
 function saveCustomFood() {
   const name=document.getElementById('m-name').value.trim(); if(!name) return;
   customFoods[name]={name,cal:+document.getElementById('m-cal').value||0,p:+document.getElementById('m-prot').value||0,c:+document.getElementById('m-carb').value||0,f:+document.getElementById('m-fat').value||0,fiber:+document.getElementById('m-fiber').value||0};
   lsSave('ht-foods',JSON.stringify(customFoods));
+  renderMyFoods();
   alert('Saved to your foods!');
 }
 
