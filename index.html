@@ -349,26 +349,7 @@
       <div class="card">
         <div class="form-row">
           <div class="form-label">Activity type</div>
-          <select id="act-type" onchange="calcBurn()">
-            <option value="">Select activity...</option>
-            <option value="9.8">Running (moderate)</option>
-            <option value="3.5">Walking</option>
-            <option value="7.5">Cycling (moderate)</option>
-            <option value="6.0">Swimming</option>
-            <option value="8.0">HIIT / circuit training</option>
-            <option value="4.0">Weight lifting</option>
-            <option value="2.5">Yoga</option>
-            <option value="6.0">Hiking</option>
-            <option value="5.0">Elliptical</option>
-            <option value="7.0">Rowing</option>
-            <option value="6.5">Basketball</option>
-            <option value="7.0">Soccer</option>
-            <option value="3.0">Pilates</option>
-            <option value="4.0">Volleyball</option>
-            <option value="7.8">Boxing</option>
-            <option value="9.0">Muay Thai</option>
-            <option value="custom">Custom (enter MET)</option>
-          </select>
+          <select id="act-type" onchange="calcBurn()"></select>
         </div>
         <div class="form-row">
           <div class="form-label">Duration (minutes)</div>
@@ -444,10 +425,7 @@
     <div id="plan-existing" style="margin-bottom:14px;"></div>
     <div class="form-row">
       <div class="form-label">Activity</div>
-      <select id="plan-type" style="margin-bottom:10px;">
-        <option>Running</option><option>Walking</option><option>Cycling</option><option>Swimming</option>
-        <option>HIIT</option><option>Weight lifting</option><option>Yoga</option><option>Hiking</option><option>Other</option>
-      </select>
+      <select id="plan-type" style="margin-bottom:10px;"></select>
     </div>
     <div class="form-row">
       <div class="form-label">Duration (min)</div>
@@ -926,8 +904,38 @@ function saveGoals() {
   goTo('home');
 }
 
+// Single source of truth for all activities
+const ACTIVITIES = [
+  { name: 'Running (moderate)',  met: 9.8 },
+  { name: 'Walking',             met: 3.5 },
+  { name: 'Cycling (moderate)',  met: 7.5 },
+  { name: 'Swimming',            met: 6.0 },
+  { name: 'HIIT / circuit training', met: 8.0 },
+  { name: 'Weight lifting',      met: 4.0 },
+  { name: 'Yoga',                met: 2.5 },
+  { name: 'Hiking',              met: 6.0 },
+  { name: 'Elliptical',          met: 5.0 },
+  { name: 'Rowing',              met: 7.0 },
+  { name: 'Basketball',          met: 6.5 },
+  { name: 'Soccer',              met: 7.0 },
+  { name: 'Pilates',             met: 3.0 },
+  { name: 'Volleyball',          met: 4.0 },
+  { name: 'Boxing',              met: 7.8 },
+  { name: 'Muay Thai',           met: 9.0 },
+];
+
+function buildActivitySelects() {
+  const actSel = document.getElementById('act-type');
+  const planSel = document.getElementById('plan-type');
+  actSel.innerHTML = '<option value="">Select activity...</option>' +
+    ACTIVITIES.map(a => `<option value="${a.met}">${a.name}</option>`).join('') +
+    '<option value="custom">Custom (enter MET)</option>';
+  planSel.innerHTML = ACTIVITIES.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+}
+
 // Init
 loadAll();
+buildActivitySelects();
 document.getElementById('hdr-sub').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 renderHome();
 </script>
