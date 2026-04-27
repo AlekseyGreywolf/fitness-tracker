@@ -341,6 +341,9 @@
 
       <div class="section-label">My saved foods</div>
       <div class="card" id="my-foods-list"><div class="empty-state">No saved foods yet — save from search results or manual entry</div></div>
+
+      <div class="section-label">Recipes <button class="btn btn-sm" onclick="openRecipeModal()">+ New recipe</button></div>
+      <div class="card" id="recipes-list"><div class="empty-state">No recipes yet — tap "New recipe" to build one</div></div>
     </div>
 
     <!-- ACTIVITY -->
@@ -447,6 +450,7 @@ const TODAY = new Date().toISOString().slice(0,10);
 let S = { steps:0, water:0, meals:[], activities:[], planned:[] };
 let G = { weight:170, stepGoal:10000, waterGoal:8, calMin:1800, calMax:2200, protein:150, fiber:30, carbs:200, fat:65 };
 let customFoods = {};
+let recipes = {};
 let apiKey = '';
 
 const PAGES = { home:'Today', steps:'Steps & Water', nutrition:'Nutrition', activity:'Activity', history:'History', goals:'Goals' };
@@ -459,6 +463,7 @@ function loadAll() {
   try { const d = ls('ht-'+TODAY); if(d) S = {...S,...JSON.parse(d)}; } catch(e){}
   try { const d = ls('ht-goals'); if(d) G = {...G,...JSON.parse(d)}; } catch(e){}
   try { const d = ls('ht-foods'); if(d) customFoods = JSON.parse(d); } catch(e){}
+  try { const d = ls('ht-recipes'); if(d) recipes = JSON.parse(d); } catch(e){}
   apiKey = ls('ht-apikey') || '';
 }
 function saveState() { lsSave('ht-'+TODAY, JSON.stringify(S)); }
@@ -591,6 +596,7 @@ function renderNutrition() {
 
   renderFoodLog();
   renderMyFoods();
+  renderRecipes();
 }
 
 function renderFoodLog() {
@@ -773,6 +779,7 @@ function logActivity() {
 function openPlanModal(){document.getElementById('plan-modal').classList.add('open');renderPlanExisting();}
 function closePlanModal(){document.getElementById('plan-modal').classList.remove('open');renderActivity();renderHome();}
 document.getElementById('plan-modal').addEventListener('click',function(e){if(e.target===this)closePlanModal();});
+document.getElementById('recipe-modal').addEventListener('click',function(e){if(e.target===this)closeRecipeModal();});
 
 function renderPlanExisting() {
   const p=S.planned||[], c=document.getElementById('plan-existing');
@@ -949,6 +956,177 @@ function saveGoals() {
   goTo('home');
 }
 
+// Recipes
+let draftRecipeName = '';
+let draftIngredients = [];
+let editingRecipeKey = null;
+
+function openRecipeModal(existingKey) {
+  editingRecipeKey = existingKey || null;
+  draftIngredients = [];
+  if(existingKey && recipes[existingKey]) {
+    draftRecipeName = recipes[existingKey].name;
+    draftIngredients = [...recipes[existingKey].ingredients];
+    document.getElementById('recipe-modal-title').textContent = 'Edit recipe';
+    document.getElementById('recipe-step-name').style.display = 'none';
+    document.getElementById('recipe-step-ingredients').style.display = 'block';
+  } else {
+    draftRecipeName = '';
+    document.getElementById('recipe-modal-title').textContent = 'New recipe';
+    document.getElementById('recipe-name-in').value = '';
+    document.getElementById('recipe-step-name').style.display = 'block';
+    document.getElementById('recipe-step-ingredients').style.display = 'none';
+  }
+  document.getElementById('recipe-modal').classList.add('open');
+  renderRiSavedFoods();
+  renderRecipeDraft();
+}
+
+function closeRecipeModal() {
+  document.getElementById('recipe-modal').classList.remove('open');
+  document.getElementById('ri-results').style.display = 'none';
+  document.getElementById('recipe-manual-form').style.display = 'none';
+}
+
+function startRecipeIngredients() {
+  const name = document.getElementById('recipe-name-in').value.trim();
+  if(!name) { document.getElementById('recipe-name-in').focus(); return; }
+  draftRecipeName = name;
+  document.getElementById('recipe-step-name').style.display = 'none';
+  document.getElementById('recipe-step-ingredients').style.display = 'block';
+  renderRiSavedFoods();
+  renderRecipeDraft();
+}
+
+function renderRecipeDraft() {
+  const c = document.getElementById('recipe-ingredients-list');
+  if(!draftIngredients.length) { c.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:4px 0 8px;">No ingredients yet</div>'; }
+  else {
+    c.innerHTML = draftIngredients.map((ing, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:0.5px solid var(--border);">
+      <div>
+        <div style="font-size:13px;font-weight:500;">${ing.name}</div>
+        <div style="font-size:11px;color:var(--text2);">${ing.cal} kcal · ${ing.p}g P · ${ing.c}g C · ${ing.f}g F · ${ing.fiber||0}g fiber</div>
+      </div>
+      <button class="delete-btn" onclick="removeRecipeIngredient(${i})">✕</button>
+    </div>`).join('');
+  }
+  // Update totals
+  if(draftIngredients.length) {
+    const t = draftIngredients.reduce((acc,ing)=>({cal:acc.cal+ing.cal,p:acc.p+ing.p,c:acc.c+ing.c,f:acc.f+ing.f,fiber:acc.fiber+(ing.fiber||0)}),{cal:0,p:0,c:0,f:0,fiber:0});
+    document.getElementById('recipe-totals').style.display = 'block';
+    document.getElementById('recipe-totals-text').textContent = `${t.cal} kcal · ${t.p}g protein · ${t.c}g carbs · ${t.f}g fat · ${t.fiber}g fiber`;
+  } else {
+    document.getElementById('recipe-totals').style.display = 'none';
+  }
+}
+
+function removeRecipeIngredient(i) {
+  draftIngredients.splice(i,1);
+  renderRecipeDraft();
+}
+
+function renderRiSavedFoods() {
+  const c = document.getElementById('ri-saved-foods');
+  const foods = Object.values(customFoods);
+  if(!foods.length) { c.innerHTML = ''; return; }
+  c.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">From saved foods</div>` +
+    foods.map(f => `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:0.5px solid var(--border);cursor:pointer;" onclick='addRecipeIngredient(${JSON.stringify(f).replace(/'/g,"&#39;")})'>
+      <div>
+        <div style="font-size:13px;font-weight:500;">${f.name}</div>
+        <div style="font-size:11px;color:var(--text2);">${f.cal} kcal · ${f.p}g P · ${f.c}g C · ${f.f}g F</div>
+      </div>
+      <span style="font-size:12px;color:var(--green);font-weight:600;">+ Add</span>
+    </div>`).join('');
+}
+
+async function doRecipeSearch() {
+  const q = document.getElementById('ri-search').value.trim(); if(!q) return;
+  if(!apiKey) { alert('Enter your API key in the Nutrition tab first.'); return; }
+  const res = document.getElementById('ri-results');
+  res.style.display = 'block';
+  res.innerHTML = '<div class="ai-loading"><div class="spinner"></div>Looking up...</div>';
+  const prompt = `You are a nutrition database. User searched: "${q}"
+Return ONLY a JSON array (no markdown) of 1-4 items. Each: name (string), cal (int), p (int), c (int), f (int), fiber (int). USDA values. Output only JSON array.`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:600,messages:[{role:'user',content:prompt}]})
+    });
+    if(!resp.ok) throw new Error('API '+resp.status);
+    const data = await resp.json();
+    const text = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    const items = JSON.parse(text);
+    res.innerHTML = items.map(f=>`<div class="result-item" onclick='addRecipeIngredient(${JSON.stringify(f).replace(/'/g,"&#39;")});document.getElementById("ri-results").style.display="none";document.getElementById("ri-search").value=""'>
+      <div style="flex:1;">
+        <div class="result-name">${f.name}</div>
+        <div class="result-macros">${f.cal} kcal · ${f.p}g P · ${f.c}g C · ${f.f}g F · ${f.fiber}g fiber</div>
+      </div>
+    </div>`).join('');
+  } catch(e) {
+    res.innerHTML = '<div class="ai-loading" style="color:var(--amber);">Could not load. Try manual entry.</div>';
+  }
+}
+
+function addRecipeIngredient(f) {
+  draftIngredients.push({name:f.name,cal:+f.cal,p:+f.p,c:+f.c,f:+f.f,fiber:+(f.fiber||0)});
+  renderRecipeDraft();
+}
+
+function toggleRecipeManual() {
+  const el = document.getElementById('recipe-manual-form');
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+function addRecipeIngredientManual() {
+  const name = document.getElementById('ri-name').value.trim(); if(!name) return;
+  draftIngredients.push({name,cal:+document.getElementById('ri-cal').value||0,p:+document.getElementById('ri-prot').value||0,c:+document.getElementById('ri-carb').value||0,f:+document.getElementById('ri-fat').value||0,fiber:+document.getElementById('ri-fiber').value||0});
+  ['ri-name','ri-cal','ri-prot','ri-carb','ri-fat','ri-fiber'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('recipe-manual-form').style.display = 'none';
+  renderRecipeDraft();
+}
+
+function saveRecipe() {
+  if(!draftIngredients.length) { alert('Add at least one ingredient.'); return; }
+  const key = editingRecipeKey || ('recipe_' + Date.now());
+  const totals = draftIngredients.reduce((acc,ing)=>({cal:acc.cal+ing.cal,p:acc.p+ing.p,c:acc.c+ing.c,f:acc.f+ing.f,fiber:acc.fiber+(ing.fiber||0)}),{cal:0,p:0,c:0,f:0,fiber:0});
+  recipes[key] = { name:draftRecipeName, ingredients:draftIngredients, ...totals };
+  lsSave('ht-recipes', JSON.stringify(recipes));
+  closeRecipeModal();
+  renderRecipes();
+}
+
+function logRecipe(key) {
+  const r = recipes[key]; if(!r) return;
+  S.meals.push({name:r.name, cal:r.cal, p:r.p, c:r.c, f:r.f, fiber:r.fiber||0});
+  saveState(); renderNutrition(); renderHome();
+}
+
+function deleteRecipe(key) {
+  delete recipes[key];
+  lsSave('ht-recipes', JSON.stringify(recipes));
+  renderRecipes();
+}
+
+function renderRecipes() {
+  const c = document.getElementById('recipes-list');
+  if(!c) return;
+  const list = Object.entries(recipes);
+  if(!list.length) { c.innerHTML='<div class="empty-state">No recipes yet — tap "New recipe" to build one</div>'; return; }
+  c.innerHTML = list.map(([key,r])=>`<div class="log-item">
+    <div style="flex:1;">
+      <div class="log-name">${r.name}</div>
+      <div class="log-macros">${r.cal} kcal · ${r.p}g protein · ${r.c}g carbs · ${r.f}g fat · ${r.fiber||0}g fiber</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px;">${r.ingredients.length} ingredient${r.ingredients.length!==1?'s':''}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+      <button class="btn btn-sm btn-primary" onclick="logRecipe('${key}')">Log</button>
+      <button class="btn btn-sm" onclick="openRecipeModal('${key}')" style="font-size:11px;">Edit</button>
+      <button class="delete-btn" onclick="deleteRecipe('${key}')">✕</button>
+    </div>
+  </div>`).join('');
+}
+
 // Single source of truth for all activities
 const ACTIVITIES = [
   { name: 'Running (moderate)',  met: 9.8 },
@@ -984,5 +1162,63 @@ buildActivitySelects();
 document.getElementById('hdr-sub').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 renderHome();
 </script>
+<!-- Recipe builder modal -->
+<div class="modal-backdrop" id="recipe-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="recipe-modal-title">New recipe</div>
+
+    <!-- Step 1: name -->
+    <div id="recipe-step-name">
+      <div class="form-row">
+        <div class="form-label">Recipe name</div>
+        <input type="text" id="recipe-name-in" placeholder="e.g. Morning protein shake">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="startRecipeIngredients()" style="margin-top:4px;">Next — add ingredients</button>
+    </div>
+
+    <!-- Step 2: ingredients -->
+    <div id="recipe-step-ingredients" style="display:none;">
+      <div id="recipe-ingredients-list" style="margin-bottom:12px;"></div>
+
+      <!-- AI search inside modal -->
+      <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Add ingredient</div>
+      <div class="search-wrap" style="margin-bottom:6px;">
+        <input id="ri-search" placeholder="Search or type ingredient..." onkeydown="if(event.key==='Enter')doRecipeSearch()" style="padding-right:40px;">
+        <span class="search-icon" onclick="doRecipeSearch()">🔍</span>
+      </div>
+      <div class="search-results" id="ri-results" style="margin-bottom:10px;"></div>
+
+      <!-- Saved foods quick-add -->
+      <div id="ri-saved-foods" style="margin-bottom:10px;"></div>
+
+      <!-- Manual ingredient entry -->
+      <button class="btn btn-sm" onclick="toggleRecipeManual()" style="margin-bottom:10px;">+ Manual entry</button>
+      <div id="recipe-manual-form" style="display:none;margin-bottom:10px;">
+        <div class="form-row"><div class="form-label">Name</div><input type="text" id="ri-name" placeholder="Ingredient name"></div>
+        <div class="macro-inputs" style="margin-bottom:8px;">
+          <div class="macro-input-cell"><div class="form-label">Cal</div><input type="number" id="ri-cal" placeholder="0"></div>
+          <div class="macro-input-cell"><div class="form-label">Protein</div><input type="number" id="ri-prot" placeholder="0"></div>
+          <div class="macro-input-cell"><div class="form-label">Carbs</div><input type="number" id="ri-carb" placeholder="0"></div>
+          <div class="macro-input-cell"><div class="form-label">Fat</div><input type="number" id="ri-fat" placeholder="0"></div>
+          <div class="macro-input-cell"><div class="form-label">Fiber</div><input type="number" id="ri-fiber" placeholder="0"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addRecipeIngredientManual()">Add ingredient</button>
+      </div>
+
+      <!-- Totals -->
+      <div id="recipe-totals" style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;display:none;">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Recipe totals</div>
+        <div style="font-size:13px;color:var(--text2);" id="recipe-totals-text"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="saveRecipe()">Save recipe</button>
+        <button class="btn" onclick="closeRecipeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
